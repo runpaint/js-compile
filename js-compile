@@ -1,0 +1,50 @@
+#!/usr/bin/env ruby
+require 'httparty'
+require 'getoptlong'
+
+class Closure
+  include HTTParty
+  base_uri 'http://closure-compiler.appspot.com'
+  attr_reader :code
+  LEVELS = { whitespace: :WHITESPACE_ONLY, simple: :SIMPLE_OPTIMIZATIONS, 
+             advanced: :ADVANCED_OPTIMIZATIONS }
+
+  def code=(js)
+    raise ArgumentError unless @code = String.try_convert(js)
+  end
+
+  def level=(level)
+    @level = String.try_convert(level).to_sym
+    @level = LEVELS[@level] if LEVELS.key?(@level)
+    raise ArgumentError unless LEVELS.values.include?(@level.to_sym)
+  end
+
+  def level
+    @level || LEVELS[:whitespace]
+  end
+
+  def compiled_code
+    raise errors if errors?
+    compile['compiledCode']
+  end
+
+  def errors?
+    compile.key?('serverErrors')
+  end
+
+  def errors
+    compile['serverErrors'].map{|e| e['error']}.join("\n")
+  end
+
+  def compile
+    @compile ||= self.class.post('/compile', body: { output_format: :json,
+      js_code: code, compilation_level: level, output_info: :compiled_code})
+  end
+end
+
+compiler = Closure.new
+GetoptLong.new([ "--level", "-l", GetoptLong::REQUIRED_ARGUMENT ]).each do |opt, arg|
+  compiler.send((opt[2..-1] + '=').to_sym, arg)
+end
+compiler.code= ARGF.read
+puts compiler.compiled_code
